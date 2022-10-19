@@ -1,0 +1,106 @@
+#!/usr/bin/make -f
+# Copyright 1994,1995 by Ian Jackson, 1998 Christoph Lameter
+# debian/rules for setserial, by Gordon Russell.
+
+
+include /usr/share/dpkg/architecture.mk
+ifeq ($(origin CC),default)
+export CC := $(DEB_HOST_GNU_TYPE)-gcc
+endif
+
+DESTDIR = $(CURDIR)/debian/setserial
+arch = $(shell dpkg-architecture -qDEB_BUILD_ARCH)
+CPPFLAGS:=$(shell dpkg-buildflags --get CPPFLAGS)
+CFLAGS:=$(shell dpkg-buildflags --get CFLAGS)
+CXXFLAGS:=$(shell dpkg-buildflags --get CXXFLAGS)
+LDFLAGS:=$(shell dpkg-buildflags --get LDFLAGS)
+
+build: stamp-build
+stamp-build:
+	dh_testdir
+ifneq "$(wildcard /usr/share/misc/config.sub)" ""
+	cp -f /usr/share/misc/config.sub config.sub
+endif
+ifneq "$(wildcard /usr/share/misc/config.guess)" ""
+	cp -f /usr/share/misc/config.guess config.guess
+endif
+	./configure --prefix=/usr
+	# make both m68k 2.2 and 2.4+ kernels work effectively
+	#
+	rm -f gorhack.h
+	if test -r /usr/include/linux/m68kserial.h ; then \
+	  touch gorhack.h; \
+	else \
+	  echo "#undef __mc68000__" > gorhack.h ; \
+	fi
+	$(MAKE) setserial CFLAGS="-O2 $(CFLAGS)" LDFLAGS="$(LDFLAGS)" CPPFLAGS="$(CPPFLAGS)" CXXFLAGS="$(CXXFLAGS)"
+	touch $@
+
+clean:
+	dh_testdir
+	dh_testroot
+	rm -f config.sub config.guess
+	[ ! -f Makefile ] || $(MAKE) distclean
+	rm -f gorhack.h setserial.8
+	dh_clean stamp-build
+
+build-arch: build
+build-indep: build
+
+binary-indep:
+# There are no architecture-independent packages here.
+
+binary-arch: build
+	dh_testdir
+	dh_testroot
+	dh_prep
+
+	dh_installdirs
+	install -g root -m 755 -o root setserial   $(DESTDIR)/bin
+	install -g root -m 644 -o root	  setserial.8 \
+		$(DESTDIR)/usr/share/man/man8/setserial.8
+	echo ${arch}
+	if [ "${arch}" = "m68k" ] ; then \
+	  echo "Using rc.serial.m68k" ;\
+	  install -g root -m 755 -o root    rc.serial.m68k \
+		$(DESTDIR)/etc/init.d/setserial ; \
+	else \
+	  echo "Using rc.serial" ;\
+	  install -g root -m 755 -o root  rc.serial \
+		$(DESTDIR)/etc/init.d/setserial ; \
+	  install -g root -m 755 -o root  rc.etc-setserial \
+		$(DESTDIR)/etc/init.d/etc-setserial ; \
+	  install -g root -m 644 -o root    serial.conf $(DESTDIR)/usr/share/doc/setserial/serial.conf ;\
+	  # #518313, not used anymore: install -g root -m 644 -o root    debian/setserial.modutils $(DESTDIR)/etc/modutils/setserial ;\
+	fi
+	if [ "${arch}" = "sparc" ] ; then \
+	  install -g root -m 644 -o root    serial.conf.sparc $(DESTDIR)/usr/share/doc/setserial/serial.conf ;\
+	fi
+
+	# Lintian overrides
+	cd debian ; \
+	for f in *.lintian-overrides ; do \
+	  [ -r "$$f" ] && { \
+	    mkdir -p "$${f%%.lintian-overrides}/usr/share/lintian/overrides" ;\
+	    install  -m 644 "$$f" "$${f%%.lintian-overrides}/usr/share/lintian/overrides/$${f%%.lintian-overrides}" ;\
+	  } ;\
+	done
+
+	dh_installdocs README pcmcia.repair
+	dh_installchangelogs
+	dh_installdebconf
+	dh_installsystemd
+	dh_installsystemd --name=etc-setserial
+#	dh_systemd_enable
+#	dh_systemd_enable --name=etc-setserial
+	dh_strip
+	dh_compress
+	dh_fixperms
+	dh_shlibdeps
+	dh_gencontrol
+	dh_installdeb
+	dh_md5sums
+	dh_builddeb
+
+binary: binary-indep binary-arch
+.PHONY: build clean binary binary-arch binary-indep

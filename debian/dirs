@@ -1,0 +1,5 @@
+bin
+etc/init.d
+usr/share/doc/setserial
+usr/share/man/man8
+var/lib/setserial
